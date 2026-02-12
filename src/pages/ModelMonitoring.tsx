@@ -1,9 +1,37 @@
+import { useEffect, useState } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useStore } from '../store/useStore';
 import StatCard from '../components/StatCard';
+import { getModelMetrics, type ModelMetricsResponse } from '../api/client';
 
 export default function ModelMonitoring() {
-  const { modelMetrics, triggerRetraining, isRetraining } = useStore();
+  const { modelMetrics: storeMetrics, triggerRetraining, isRetraining } = useStore();
+  const [apiMetrics, setApiMetrics] = useState<ModelMetricsResponse | null>(null);
+
+  useEffect(() => {
+    getModelMetrics()
+      .then(setApiMetrics)
+      .catch(() => setApiMetrics(null));
+    const interval = setInterval(() => {
+      getModelMetrics()
+        .then(setApiMetrics)
+        .catch(() => setApiMetrics(null));
+    }, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const modelMetrics = apiMetrics
+    ? {
+        accuracy: apiMetrics.accuracy,
+        precision: apiMetrics.precision,
+        recall: apiMetrics.recall,
+        f1Score: apiMetrics.f1_score,
+        driftScore: apiMetrics.drift_score,
+        latency: apiMetrics.latency,
+        falsePositiveRate: apiMetrics.false_positive_rate,
+        version: apiMetrics.version,
+      }
+    : storeMetrics;
 
   // Generate mock historical data for charts
   const generateHistoricalData = (baseValue: number, count: number = 30) => {
@@ -26,6 +54,12 @@ export default function ModelMonitoring() {
           <p className="text-gray-600 mt-1">Track model performance and health metrics</p>
         </div>
         <div className="flex items-center gap-4">
+          {apiMetrics?.best_algorithm && (
+            <div className="bg-green-50 px-4 py-2 rounded-lg border border-green-200">
+              <span className="text-xs text-green-600 font-medium">Best Algorithm</span>
+              <p className="text-sm font-bold text-green-900">{apiMetrics.best_algorithm}</p>
+            </div>
+          )}
           <div className="bg-blue-50 px-4 py-2 rounded-lg border border-blue-200">
             <span className="text-xs text-blue-600 font-medium">Current Version</span>
             <p className="text-sm font-bold text-blue-900">{modelMetrics.version}</p>
@@ -58,6 +92,47 @@ export default function ModelMonitoring() {
           icon="⭐"
         />
       </div>
+
+      {/* Algorithm comparison (from API) */}
+      {apiMetrics?.all_algorithms && apiMetrics.all_algorithms.length > 0 && (
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Algorithm comparison (best by F1)</h3>
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-200">
+                  <th className="text-left py-2 font-medium text-gray-700">Algorithm</th>
+                  <th className="text-right py-2 font-medium text-gray-700">F1</th>
+                  <th className="text-right py-2 font-medium text-gray-700">Accuracy</th>
+                  <th className="text-right py-2 font-medium text-gray-700">Precision</th>
+                  <th className="text-right py-2 font-medium text-gray-700">Recall</th>
+                  <th className="text-right py-2 font-medium text-gray-700">FPR</th>
+                </tr>
+              </thead>
+              <tbody>
+                {apiMetrics.all_algorithms.map((row) => (
+                  <tr
+                    key={row.algorithm}
+                    className={`border-b border-gray-100 ${row.algorithm === apiMetrics.best_algorithm ? 'bg-green-50' : ''}`}
+                  >
+                    <td className="py-2 font-medium text-gray-900">
+                      {row.algorithm}
+                      {row.algorithm === apiMetrics.best_algorithm && (
+                        <span className="ml-2 text-xs text-green-600 font-normal">(in use)</span>
+                      )}
+                    </td>
+                    <td className="text-right py-2 text-gray-700">{(row.f1_score * 100).toFixed(2)}%</td>
+                    <td className="text-right py-2 text-gray-700">{(row.accuracy * 100).toFixed(2)}%</td>
+                    <td className="text-right py-2 text-gray-700">{(row.precision * 100).toFixed(2)}%</td>
+                    <td className="text-right py-2 text-gray-700">{(row.recall * 100).toFixed(2)}%</td>
+                    <td className="text-right py-2 text-gray-700">{(row.false_positive_rate * 100).toFixed(2)}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Charts Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

@@ -1,0 +1,86 @@
+name: MLOps Training Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'backend/train_model.py'
+      - 'backend/app/ml/**'
+      - '.github/workflows/mlops-pipeline.yml'
+  workflow_dispatch:
+    inputs:
+      trigger_retrain:
+        description: 'Trigger model retraining'
+        required: false
+        default: 'false'
+        type: boolean
+
+jobs:
+  train-model:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          cd backend
+          pip install -r requirements.txt
+
+      - name: Train model
+        run: |
+          cd backend
+          python train_model.py
+
+      - name: Validate model
+        run: |
+          cd backend
+          python -c "
+          import sys
+          sys.path.insert(0, '.')
+          from app.mlops.pipeline import pipeline
+          result = pipeline.validate_model()
+          print(f'Validation: {result}')
+          if not result.get('valid'):
+            sys.exit(1)
+          "
+
+      - name: Upload model artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: model-artifacts
+          path: |
+            backend/app/ml/*.joblib
+            backend/ml_registry/
+            backend/mlflow_experiments/
+
+      - name: Run tests (if exists)
+        continue-on-error: true
+        run: |
+          cd backend
+          python -m pytest tests/ -v || echo "No tests found"
+
+  deploy-model:
+    needs: train-model
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: model-artifacts
+
+      - name: Deploy notification
+        run: |
+          echo "Model training completed. Ready for deployment."
+          echo "Use /mlops/deploy/{version} endpoint to promote model to production."

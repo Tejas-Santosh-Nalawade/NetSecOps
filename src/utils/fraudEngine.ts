@@ -1,8 +1,9 @@
 import { Transaction, Incident, AnomalyDataPoint } from '../types';
+import { predictRisk } from '../api/client';
 
 /**
  * Fraud Engine Simulation
- * Generates random transactions and calculates risk scores
+ * Generates random transactions and calculates risk scores (local or via ML API)
  */
 
 // Risk thresholds
@@ -20,14 +21,12 @@ function generateRandomIP(): string {
 }
 
 /**
- * Calculate risk score based on transaction characteristics
+ * Calculate risk score based on transaction characteristics (fallback when API unavailable)
  */
 function calculateRiskScore(amount: number, sourceIp: string): number {
-  // Simulate risk factors
-  const amountRisk = Math.min(amount / 10000, 0.5); // Higher amounts = higher risk
-  const ipRisk = parseFloat(sourceIp.split('.')[0]) / 255; // Simulate IP-based risk
-  const randomFactor = Math.random() * 0.3; // Random component
-  
+  const amountRisk = Math.min(amount / 10000, 0.5);
+  const ipRisk = parseFloat(sourceIp.split('.')[0]) / 255;
+  const randomFactor = Math.random() * 0.3;
   return Math.min(amountRisk + ipRisk + randomFactor, 1.0);
 }
 
@@ -41,14 +40,14 @@ function getRiskLevel(score: number): 'Low' | 'Medium' | 'High' {
 }
 
 /**
- * Generate a random transaction
+ * Build a transaction from raw data and risk result
  */
-export function generateTransaction(): Transaction {
-  const amount = Math.random() * 50000 + 100; // $100 - $50,100
-  const sourceIp = generateRandomIP();
-  const riskScore = calculateRiskScore(amount, sourceIp);
-  const riskLevel = getRiskLevel(riskScore);
-  
+function toTransaction(
+  amount: number,
+  sourceIp: string,
+  riskScore: number,
+  riskLevel: 'Low' | 'Medium' | 'High'
+): Transaction {
   return {
     id: `TXN-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
     timestamp: Date.now(),
@@ -58,6 +57,34 @@ export function generateTransaction(): Transaction {
     riskLevel,
     status: 'Pending',
   };
+}
+
+/**
+ * Generate a random transaction (sync, uses local risk calculation)
+ */
+export function generateTransaction(): Transaction {
+  const amount = Math.random() * 50000 + 100;
+  const sourceIp = generateRandomIP();
+  const riskScore = calculateRiskScore(amount, sourceIp);
+  const riskLevel = getRiskLevel(riskScore);
+  return toTransaction(amount, sourceIp, riskScore, riskLevel);
+}
+
+/**
+ * Generate a transaction using the ML API when available; falls back to local calculation
+ */
+export async function generateTransactionWithApi(): Promise<Transaction> {
+  const amount = Math.random() * 50000 + 100;
+  const sourceIp = generateRandomIP();
+  const timestamp = Date.now();
+  try {
+    const res = await predictRisk(amount, sourceIp, timestamp);
+    return toTransaction(amount, sourceIp, res.risk_score, res.risk_level);
+  } catch {
+    const riskScore = calculateRiskScore(amount, sourceIp);
+    const riskLevel = getRiskLevel(riskScore);
+    return toTransaction(amount, sourceIp, riskScore, riskLevel);
+  }
 }
 
 /**

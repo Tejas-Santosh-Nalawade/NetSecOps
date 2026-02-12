@@ -22,3 +22,12 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# MLOps artifacts
+backend/ml_registry/
+backend/mlflow_experiments/
+backend/app/ml/*.joblib
+backend/app/ml/metadata.joblib
+backend/app/ml/scaler.joblib
+*.pkl
+*.joblib

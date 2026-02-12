@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useStore } from '../store/useStore';
 import StatCard from '../components/StatCard';
+import { submitFeedback } from '../api/client';
 
 export default function Feedback() {
   const { incidents, feedbacks, confirmedFraud, falsePositives, addFeedback } = useStore();
@@ -13,14 +14,15 @@ export default function Feedback() {
   const handleSubmitFeedback = () => {
     if (!selectedIncidentId || !feedbackType) return;
 
+    const isFraud = feedbackType === 'fraud';
     addFeedback({
       incidentId: selectedIncidentId,
-      isFraud: feedbackType === 'fraud',
+      isFraud,
       comment,
       timestamp: Date.now(),
     });
+    submitFeedback(selectedIncidentId, isFraud, comment).catch(() => {});
 
-    // Reset form
     setSelectedIncidentId('');
     setComment('');
     setFeedbackType(null);
