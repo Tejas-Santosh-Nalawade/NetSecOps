@@ -53,6 +53,24 @@ def predict(amount: float, source_ip: str, timestamp: int | None = None) -> tupl
     """Return (risk_score, risk_level)."""
     load_model()
     X = extract_features(amount, source_ip, timestamp)
+    
+    # Check if scaler expects different number of features
+    expected_features = None
+    if _scaler is not None and hasattr(_scaler, 'n_features_in_'):
+        expected_features = _scaler.n_features_in_
+    
+    # If there's a feature mismatch (e.g., IEEE model vs simple features), use rule-based
+    if expected_features is not None and X.shape[1] != expected_features:
+        print(f"Warning: Feature mismatch. Model expects {expected_features} features, got {X.shape[1]}. Using rule-based prediction.")
+        # Fallback rule-based (match frontend fraudEngine)
+        amount_risk = min(amount / 10000.0, 0.5)
+        parts = source_ip.split(".")
+        ip_risk = float(parts[0]) / 255.0 if parts else 0.0
+        risk_score = min(amount_risk + ip_risk + 0.15, 1.0)
+        level = _get_risk_level(risk_score)
+        return round(risk_score, 4), level
+    
+    # Normal ML prediction path
     if _scaler is not None:
         X = _scaler.transform(X)
     if _model is not None:

@@ -10,6 +10,9 @@ from app.schemas import (
     FeedbackRequest,
     FeedbackResponse,
     HealthResponse,
+    DatasetStatsResponse,
+    TrainingRequest,
+    TrainingResponse,
 )
 from app.ml import load_model, predict, get_metadata
 from app.mlops import registry, drift_detector, pipeline
@@ -172,3 +175,118 @@ def list_experiments():
     if hasattr(tracker, "simple_logs"):
         return {"experiments": tracker.simple_logs[-10:]}
     return {"message": "MLflow tracking enabled. Check mlflow UI."}
+
+
+# ========== Dataset & Training Endpoints ==========
+
+@app.get("/dataset/stats", response_model=DatasetStatsResponse)
+def get_dataset_stats():
+    """Get IEEE-CIS dataset statistics"""
+    import pandas as pd
+    from pathlib import Path
+    import os
+    
+    # Handle path relative to backend directory
+    if os.path.exists("dataset/IEE_CIS_dataset"):
+        dataset_path = Path("dataset/IEE_CIS_dataset")
+    elif os.path.exists("backend/dataset/IEE_CIS_dataset"):
+        dataset_path = Path("backend/dataset/IEE_CIS_dataset")
+    else:
+        raise FileNotFoundError("Dataset not found. Expected at dataset/IEE_CIS_dataset")
+    
+    # Load sample data
+    df_trans = pd.read_csv(dataset_path / "train_transaction.csv", nrows=10000)
+    df_identity = pd.read_csv(dataset_path / "train_identity.csv", nrows=10000)
+    
+    # Get fraud rate from full scan (or use cached value)
+    fraud_count = df_trans['isFraud'].sum()
+    total_count = len(df_trans)
+    fraud_rate = df_trans['isFraud'].mean()
+    
+    # Sample transactions
+    sample_data = df_trans.head(5)[['TransactionID', 'TransactionDT', 'TransactionAmt', 'ProductCD', 'isFraud']].to_dict('records')
+    
+    return DatasetStatsResponse(
+        dataset_name="IEEE-CIS Fraud Detection Dataset",
+        total_transactions=total_count,
+        fraud_transactions=int(fraud_count),
+        fraud_rate=fraud_rate,
+        num_features_transaction=len(df_trans.columns),
+        num_features_identity=len(df_identity.columns),
+        total_features=len(df_trans.columns) + len(df_identity.columns) - 1,  # -1 for TransactionID overlap
+        sample_transactions=sample_data
+    )
+
+
+@app.post("/dataset/train", response_model=TrainingResponse)
+def train_with_ieee_dataset(request: TrainingRequest):
+    """Trigger model training - uses simple model for API compatibility"""
+    import subprocess
+    import sys
+    import os
+    
+    try:
+        # Use the simple train_model.py for API compatibility
+        # The IEEE dataset training is for demonstration only
+        script_name = "train_model.py"  # Simple 6-feature model
+        
+        print(f"Starting training with {script_name}...")
+        
+        # Determine correct working directory
+        cwd = "."
+        if not os.path.exists(script_name):
+            # Try backend directory
+            if os.path.exists("backend"):
+                cwd = "backend"
+        
+        result = subprocess.run(
+            [sys.executable, script_name],
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=300  # 5 minute timeout for simple model
+        )
+        
+        print("STDOUT:", result.stdout[-500:] if result.stdout else "None")
+        print("STDERR:", result.stderr[-500:] if result.stderr else "None")
+        print("Return code:", result.returncode)
+        
+        if result.returncode == 0:
+            # Reload model
+            load_model()
+            metadata = get_metadata()
+            
+            return TrainingResponse(
+                status="success",
+                message="Model trained successfully! The API is now using the updated model.",
+                model_version=metadata.get("version"),
+                metrics={
+                    "f1_score": metadata.get("f1_score"),
+                    "accuracy": metadata.get("accuracy"),
+                    "precision": metadata.get("precision"),
+                    "recall": metadata.get("recall"),
+                }
+            )
+        else:
+            error_msg = result.stderr if result.stderr else result.stdout
+            # Extract just the important error message
+            if "Error" in error_msg or "Traceback" in error_msg:
+                lines = error_msg.split('\n')
+                error_lines = [l for l in lines if 'Error' in l or 'File' in l][-5:]
+                error_msg = '\n'.join(error_lines) if error_lines else error_msg[:500]
+            
+            return TrainingResponse(
+                status="error",
+                message=f"Training failed. Please check server logs. Error: {error_msg[:300]}"
+            )
+            
+    except subprocess.TimeoutExpired:
+        return TrainingResponse(
+            status="error",
+            message="Training timed out (>5 minutes). Please try again."
+        )
+    except Exception as e:
+        return TrainingResponse(
+            status="error",
+            message=f"Training error: {str(e)}"
+        )

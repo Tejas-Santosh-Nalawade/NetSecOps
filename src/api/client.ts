@@ -110,3 +110,46 @@ export async function triggerRetraining(): Promise<{ status: string; trigger: st
     method: 'POST',
   });
 }
+
+export interface DatasetStats {
+  dataset_name: string;
+  total_transactions: number;
+  fraud_transactions: number;
+  fraud_rate: number;
+  num_features_transaction: number;
+  num_features_identity: number;
+  total_features: number;
+  sample_transactions: Array<{
+    TransactionID: number;
+    TransactionDT: number;
+    TransactionAmt: number;
+    ProductCD: string;
+    isFraud: number;
+  }>;
+}
+
+export async function getDatasetStats(): Promise<DatasetStats> {
+  return fetchApi<DatasetStats>('/dataset/stats');
+}
+
+export interface TrainingResponse {
+  status: string;
+  message: string;
+  model_version?: string;
+  metrics?: {
+    f1_score: number;
+    accuracy: number;
+    precision: number;
+    recall: number;
+  };
+}
+
+export async function trainWithIEEEDataset(sampleSize: number = 100000): Promise<TrainingResponse> {
+  return fetchApi<TrainingResponse>('/dataset/train', {
+    method: 'POST',
+    body: JSON.stringify({
+      sample_size: sampleSize,
+      use_ieee_dataset: true,
+    }),
+  });
+}

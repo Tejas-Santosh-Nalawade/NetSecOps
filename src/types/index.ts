@@ -43,3 +43,15 @@ export interface AnomalyDataPoint {
   timestamp: number;
   value: number;
 }
+
+export interface MetricsHistoryPoint {
+  timestamp: number;
+  date: string;
+  accuracy: number;
+  precision: number;
+  recall: number;
+  f1Score: number;
+  driftScore: number;
+  latency: number;
+  falsePositiveRate: number;
+}

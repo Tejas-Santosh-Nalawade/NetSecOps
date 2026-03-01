@@ -24,6 +24,7 @@ dist-ssr
 *.sw?
 
 # MLOps artifacts
+backend/dataset/
 backend/ml_registry/
 backend/mlflow_experiments/
 backend/app/ml/*.joblib

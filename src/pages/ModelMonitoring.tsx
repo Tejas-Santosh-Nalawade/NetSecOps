@@ -5,7 +5,7 @@ import StatCard from '../components/StatCard';
 import { getModelMetrics, type ModelMetricsResponse } from '../api/client';
 
 export default function ModelMonitoring() {
-  const { modelMetrics: storeMetrics, triggerRetraining, isRetraining } = useStore();
+  const { modelMetrics: storeMetrics, metricsHistory, triggerRetraining, isRetraining } = useStore();
   const [apiMetrics, setApiMetrics] = useState<ModelMetricsResponse | null>(null);
 
   useEffect(() => {
@@ -33,7 +33,7 @@ export default function ModelMonitoring() {
       }
     : storeMetrics;
 
-  // Generate mock historical data for charts
+  // Use real historical data from metrics history, or fallback to mock data
   const generateHistoricalData = (baseValue: number, count: number = 30) => {
     return Array.from({ length: count }, (_, i) => ({
       date: new Date(Date.now() - (count - i) * 24 * 60 * 60 * 1000).toLocaleDateString(),
@@ -41,10 +41,22 @@ export default function ModelMonitoring() {
     }));
   };
 
-  const accuracyData = generateHistoricalData(modelMetrics.accuracy);
-  const driftData = generateHistoricalData(modelMetrics.driftScore);
-  const latencyData = generateHistoricalData(modelMetrics.latency);
-  const fprData = generateHistoricalData(modelMetrics.falsePositiveRate);
+  // Format historical data for charts - use real data if available, otherwise fallback
+  const accuracyData = metricsHistory.length > 0
+    ? metricsHistory.map(point => ({ date: new Date(point.timestamp).toLocaleTimeString(), value: point.accuracy }))
+    : generateHistoricalData(modelMetrics.accuracy);
+  
+  const driftData = metricsHistory.length > 0
+    ? metricsHistory.map(point => ({ date: new Date(point.timestamp).toLocaleTimeString(), value: point.driftScore }))
+    : generateHistoricalData(modelMetrics.driftScore);
+  
+  const latencyData = metricsHistory.length > 0
+    ? metricsHistory.map(point => ({ date: new Date(point.timestamp).toLocaleTimeString(), value: point.latency }))
+    : generateHistoricalData(modelMetrics.latency);
+  
+  const fprData = metricsHistory.length > 0
+    ? metricsHistory.map(point => ({ date: new Date(point.timestamp).toLocaleTimeString(), value: point.falsePositiveRate }))
+    : generateHistoricalData(modelMetrics.falsePositiveRate);
 
   return (
     <div className="space-y-6">

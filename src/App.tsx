@@ -7,6 +7,7 @@ import Incidents from './pages/Incidents';
 import ModelMonitoring from './pages/ModelMonitoring';
 import Feedback from './pages/Feedback';
 import Architecture from './pages/Architecture';
+import DatasetInfo from './pages/DatasetInfo';
 
 // Protected Route Component
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -31,6 +32,7 @@ function App() {
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="incidents" element={<Incidents />} />
           <Route path="model-monitoring" element={<ModelMonitoring />} />
+          <Route path="dataset" element={<DatasetInfo />} />
           <Route path="feedback" element={<Feedback />} />
           <Route path="architecture" element={<Architecture />} />
         </Route>

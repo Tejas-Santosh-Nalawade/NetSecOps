@@ -46,3 +46,29 @@ class HealthResponse(BaseModel):
     
     class Config:
         protected_namespaces = ()
+
+
+class DatasetStatsResponse(BaseModel):
+    dataset_name: str
+    total_transactions: int
+    fraud_transactions: int
+    fraud_rate: float
+    num_features_transaction: int
+    num_features_identity: int
+    total_features: int
+    sample_transactions: List[dict]
+    
+    
+class TrainingRequest(BaseModel):
+    sample_size: Optional[int] = 100000
+    use_ieee_dataset: bool = True
+    
+
+class TrainingResponse(BaseModel):
+    status: str
+    message: str
+    model_version: Optional[str] = None
+    metrics: Optional[dict] = None
+    
+    class Config:
+        protected_namespaces = ()

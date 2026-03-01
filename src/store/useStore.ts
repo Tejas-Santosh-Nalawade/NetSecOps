@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { Transaction, Incident, ModelMetrics, Feedback, AnomalyDataPoint } from '../types';
+import { Transaction, Incident, ModelMetrics, Feedback, AnomalyDataPoint, MetricsHistoryPoint } from '../types';
 import { generateTransaction, generateTransactionWithApi, transactionToIncident, generateAnomalyDataPoint } from '../utils/fraudEngine';
 
 interface AppState {
@@ -24,6 +24,7 @@ interface AppState {
 
   // Model metrics
   modelMetrics: ModelMetrics;
+  metricsHistory: MetricsHistoryPoint[];
   isRetraining: boolean;
 
   // Feedback
@@ -57,7 +58,7 @@ const initialModelMetrics: ModelMetrics = {
 
 export const useStore = create<AppState>((set, get) => {
   let simulationInterval: number | null = null;
-  let anomalyInterval: number | null = null;
+  let metricsPollingInterval: number | null = null;
 
   return {
     // Auth
@@ -84,6 +85,7 @@ export const useStore = create<AppState>((set, get) => {
     openIncidents: 0,
     anomalyData: [],
     modelMetrics: initialModelMetrics,
+    metricsHistory: [],
     isRetraining: false,
     feedbacks: [],
     confirmedFraud: 0,
@@ -98,12 +100,20 @@ export const useStore = create<AppState>((set, get) => {
         const openIncidents = newIncidents.filter((i) => i.status === 'Open').length;
         const blocked = transaction.status === 'Blocked' ? state.blockedTransactions + 1 : state.blockedTransactions;
 
+        // Add transaction risk score to anomaly data for real-time chart
+        const anomalyPoint: AnomalyDataPoint = {
+          timestamp: transaction.timestamp,
+          value: transaction.riskScore * 100, // Convert to 0-100 scale
+        };
+        const newAnomalyData = [...state.anomalyData, anomalyPoint].slice(-60);
+
         return {
           transactions: newTransactions.slice(-100), // Keep last 100
           totalTransactions: state.totalTransactions + 1,
           incidents: newIncidents,
           openIncidents,
           blockedTransactions: blocked,
+          anomalyData: newAnomalyData,
         };
       });
     },
@@ -238,17 +248,44 @@ export const useStore = create<AppState>((set, get) => {
         }));
       }, 2000 + Math.random() * 3000);
 
-      // Generate anomaly data every second
-      anomalyInterval = window.setInterval(() => {
-        const dataPoint = generateAnomalyDataPoint();
-        set((state) => {
-          const newData = [...state.anomalyData, dataPoint];
-          // Keep last 60 data points (1 minute at 1 per second)
-          return {
-            anomalyData: newData.slice(-60),
+      // Poll metrics every 10 seconds and store history
+      const pollMetrics = async () => {
+        try {
+          const { getModelMetrics } = await import('../api/client');
+          const metrics = await getModelMetrics();
+          const now = Date.now();
+          const historyPoint: MetricsHistoryPoint = {
+            timestamp: now,
+            date: new Date(now).toLocaleString(),
+            accuracy: metrics.accuracy,
+            precision: metrics.precision,
+            recall: metrics.recall,
+            f1Score: metrics.f1_score,
+            driftScore: metrics.drift_score,
+            latency: metrics.latency,
+            falsePositiveRate: metrics.false_positive_rate,
           };
-        });
-      }, 1000);
+          set((state) => ({
+            modelMetrics: {
+              accuracy: metrics.accuracy,
+              precision: metrics.precision,
+              recall: metrics.recall,
+              f1Score: metrics.f1_score,
+              driftScore: metrics.drift_score,
+              latency: metrics.latency,
+              falsePositiveRate: metrics.false_positive_rate,
+              version: metrics.version,
+            },
+            metricsHistory: [...state.metricsHistory, historyPoint].slice(-100), // Keep last 100 points
+          }));
+        } catch (error) {
+          console.error('Failed to fetch metrics:', error);
+        }
+      };
+      // Initial fetch
+      pollMetrics();
+      // Then poll every 10 seconds
+      metricsPollingInterval = window.setInterval(pollMetrics, 10000);
     },
 
     stopSimulation: () => {
@@ -256,9 +293,9 @@ export const useStore = create<AppState>((set, get) => {
         clearInterval(simulationInterval);
         simulationInterval = null;
       }
-      if (anomalyInterval !== null) {
-        clearInterval(anomalyInterval);
-        anomalyInterval = null;
+      if (metricsPollingInterval !== null) {
+        clearInterval(metricsPollingInterval);
+        metricsPollingInterval = null;
       }
     },
   };

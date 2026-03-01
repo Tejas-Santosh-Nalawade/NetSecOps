@@ -10,6 +10,7 @@ const navItems: NavItem[] = [
   { path: '/dashboard', label: 'Dashboard', icon: '📊' },
   { path: '/incidents', label: 'Incidents', icon: '🚨' },
   { path: '/model-monitoring', label: 'Model Monitoring', icon: '🔍' },
+  { path: '/dataset', label: 'Dataset & Training', icon: '📚' },
   { path: '/feedback', label: 'Feedback & Validation', icon: '✅' },
   { path: '/architecture', label: 'System Architecture', icon: '🏗️' },
 ];
